@@ -120,8 +120,9 @@ type Application struct {
 	iface      *net.Interface
 
 	// NOTE: Currently only playing one media file at a time is handled
-	mediaFinished  chan bool
-	mediaFilenames []string
+	mediaFinishedEnabled bool
+	mediaFinished        chan bool
+	mediaFilenames       []string
 
 	playedItems   map[string]PlayedItem
 	cacheDisabled bool
@@ -169,6 +170,12 @@ func WithConnection(conn cast.Conn) ApplicationOption {
 	}
 }
 
+func WithMediaFinishedEnabled(mediaFinishedEnabled bool) ApplicationOption {
+	return func(a *Application) {
+		a.SetMediaFinishedEnabled(mediaFinishedEnabled)
+	}
+}
+
 func WithConnectionRetries(connectionRetries int) ApplicationOption {
 	return func(a *Application) {
 		a.SetConnectionRetries(connectionRetries)
@@ -189,14 +196,15 @@ func WithSkipadRetries(retries int) ApplicationOption {
 
 func NewApplication(opts ...ApplicationOption) *Application {
 	a := &Application{
-		conn:              cast.NewConnection(),
-		resultChanMap:     map[int]chan *pb.CastMessage{},
-		messageChan:       make(chan *pb.CastMessage),
-		playedItems:       map[string]PlayedItem{},
-		cache:             storage.NewStorage(),
-		connectionRetries: 5,
-		skipadSleep:       2 * time.Second,
-		skipadRetries:     30,
+		conn:                 cast.NewConnection(),
+		resultChanMap:        map[int]chan *pb.CastMessage{},
+		messageChan:          make(chan *pb.CastMessage),
+		mediaFinishedEnabled: true,
+		playedItems:          map[string]PlayedItem{},
+		cache:                storage.NewStorage(),
+		connectionRetries:    5,
+		skipadSleep:          2 * time.Second,
+		skipadRetries:        30,
 	}
 
 	// Apply options
@@ -222,6 +230,10 @@ func (a *Application) SetIface(iface *net.Interface)       { a.iface = iface }
 
 func (a *Application) SetSkipadSleep(sleep time.Duration) { a.skipadSleep = sleep }
 func (a *Application) SetSkipadRetries(retries int)       { a.skipadRetries = retries }
+
+func (a *Application) SetMediaFinishedEnabled(mediaFinishedEnabled bool) {
+	a.mediaFinishedEnabled = mediaFinishedEnabled
+}
 
 func (a *Application) App() *cast.Application { return a.application }
 func (a *Application) Media() *cast.Media     { return a.media }
@@ -251,10 +263,16 @@ func (a *Application) messageChanHandler() {
 // is littered throughout the codebase. This needs a redesign now that
 // we do things other than just loading and playing media files.
 func (a *Application) MediaStart() {
+	if !a.mediaFinishedEnabled {
+		return
+	}
 	a.mediaFinished = make(chan bool, 1)
 }
 
 func (a *Application) MediaWait() {
+	if a.mediaFinished == nil {
+		return
+	}
 	<-a.mediaFinished
 	a.mediaFinished = nil
 }

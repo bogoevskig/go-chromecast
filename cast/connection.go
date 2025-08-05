@@ -218,6 +218,15 @@ func (c *Connection) handleMessage(requestID int, message *pb.CastMessage, heade
 			c.log("unable to respond to 'PING': %v", err)
 		}
 	default:
-		c.recvMsgChan <- message
+		if c.recvMsgChan == nil {
+			c.log("receive channel is nil, cannot send message: %s", messageType)
+			return
+		}
+
+		select {
+		case c.recvMsgChan <- message:
+		default:
+			c.log("receive channel is closed or full, cannot send message: %s", messageType)
+		}
 	}
 }

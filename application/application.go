@@ -246,6 +246,15 @@ func (a *Application) AddMessageFunc(f CastMessageFunc) {
 	a.messageFuncs = append(a.messageFuncs, f)
 }
 
+func (a *Application) sendToMessageChan(msg *pb.CastMessage) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.WithField("package", "application").Warnf("failed to send message to channel: %v", r)
+		}
+	}()
+	a.messageChan <- msg
+}
+
 func (a *Application) messageChanHandler() {
 	for msg := range a.messageChan {
 		a.messageMu.Lock()
@@ -291,7 +300,7 @@ func (a *Application) recvMessages() {
 			if resultChan, ok := a.resultChanMap[int(requestID)]; ok {
 				resultChan <- msg
 				// Relay the event to any user specified message funcs.
-				a.messageChan <- msg
+				a.sendToMessageChan(msg)
 				continue
 			}
 		}
@@ -340,7 +349,7 @@ func (a *Application) recvMessages() {
 			a.application, a.media, a.volumeReceiver = nil, nil, nil
 		}
 		// Relay the event to any user specified message funcs.
-		a.messageChan <- msg
+		a.sendToMessageChan(msg)
 	}
 }
 
